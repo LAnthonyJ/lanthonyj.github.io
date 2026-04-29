@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Customer Churn Survival Analysis | Blog</title>
+    <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<!-- Navigation -->
+<nav>
+  <div class="nav-inner">
+    <a class="nav-brand" href="index.html" style="color:inherit">&#8592; 张航源</a>
+    <ul class="nav-links">
+      <li><a href="index.html#projects">Projects</a></li>
+      <li><a href="index.html#blog">Blog</a></li>
+    </ul>
+  </div>
+</nav>
+
+<!-- Blog Hero -->
+<div class="blog-hero">
+  <div class="container">
+    <h1>Customer Churn Survival Analysis with PySpark & IBM Telco Data</h1>
+    <p class="blog-meta">
+      April 28, 2026 &bull; Big Data Software &amp; Applications &bull; 12 min read
+    </p>
+  </div>
+</div>
+
+<!-- Blog Content -->
+<article class="blog-body">
+
+<h2>1. Introduction to Survival Analysis</h2>
+
+<p>
+  <strong>Survival analysis</strong> is a statistical methodology for analyzing
+  <strong>time-to-event data</strong>. Unlike standard regression models, survival
+  analysis gracefully handles <em>censoring</em> — observations where the event
+  has not yet occurred by the end of the study period. In business contexts,
+  this translates directly to customer churn prediction: we want to know not just
+  <em>if</em> a customer will churn, but <em>when</em>.
+</p>
+
+<p>Key concepts:</p>
+<ul>
+  <li><strong>Survival time T</strong>: Time from study entry to event (here: tenure in months)</li>
+  <li><strong>Event indicator &delta;</strong>: 1 = churned, 0 = still active (censored)</li>
+  <li><strong>Survival function S(t) = P(T &gt; t)</strong>: Probability a customer stays past month t</li>
+  <li><strong>Hazard function h(t)</strong>: Instantaneous churn rate at month t, given survival to t</li>
+</ul>
+
+<div class="callout">
+  <strong>Why does censoring matter?</strong>
+  If we simply drop customers who haven't churned yet, we lose valuable information —
+  knowing a customer survived at least 72 months without churning tells us something
+  important. Censoring lets us use all available data without bias.
+</div>
+
+<h2>2. Dataset: IBM Telco Customer Churn</h2>
+
+<p>
+  The <strong>IBM Telco Customer Churn</strong> dataset contains 7,043 customers
+  from a telecommunications company, with 21 features covering demographics,
+  account information, and subscribed services. For this analysis, we apply a
+  <strong>Silver Table</strong> filter: keeping only month-to-month contract
+  customers with internet service, yielding <strong>3,351 records</strong>.
+  The churn rate in this filtered cohort is 46.4% (censoring rate 53.6%).
+</p>
+
+<table class="result-table">
+  <thead>
+    <tr>
+      <th>Column</th><th>Type</th><th>Role</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr><td><code>tenure</code></td><td>Int (1–72)</td><td><strong>Survival time</strong> — months the customer has stayed</td></tr>
+    <tr><td><code>Churn</code></td><td>Yes/No</td><td><strong>Event indicator</strong> — Yes = churned (event), No = active (censored)</td></tr>
+    <tr><td><code>InternetService</code></td><td>DSL / Fiber optic</td><td>Type of internet service</td></tr>
+    <tr><td><code>Contract</code></td><td>Categorical</td><td>Month-to-month / One year / Two year (filtered to month-to-month)</td></tr>
+    <tr><td><code>MonthlyCharges</code></td><td>Float</td><td>Monthly fee (mean: $73.59)</td></tr>
+    <tr><td><code>TotalCharges</code></td><td>Float</td><td>Cumulative charges over tenure</td></tr>
+    <tr><td><code>TechSupport</code></td><td>Yes/No</td><td>Whether the customer has tech support</td></tr>
+    <tr><td><code>OnlineBackup</code></td><td>Yes/No</td><td>Whether the customer has online backup service</td></tr>
+    <tr><td><code>Dependents</code></td><td>Yes/No</td><td>Whether the customer has dependents</td></tr>
+  </tbody>
+</table>
+
+<div class="callout success">
+  <strong>Silver Table Design</strong>
+  Following the Databricks medallion architecture, the raw CSV is the Bronze layer.
+  We filter to month-to-month + internet customers and cast types for the Silver layer,
+  ready for analysis. This mirrors real-world data engineering pipelines.
+</div>
+
+<h2>3. Setting Up PySpark & Data Loading</h2>
+
+<pre><code>from pyspark.sql import SparkSession
+from pyspark.sql import functions as F
+from pyspark.ml.feature import VectorAssembler, StringIndexer, OneHotEncoder
+from pyspark.ml import Pipeline
+from pyspark.ml.regression import AFTSurvivalRegression
+from lifelines.fitters.coxph_fitter import CoxPHFitter
+
+spark = SparkSession.builder \
+    .appName("SurvivalAnalysis_Telco") \
+    .config("spark.driver.memory", "2g") \
+    .getOrCreate()
+
+# Load raw data
+df_raw = spark.read.format("csv") \
+    .option("header", "true") \
+    .load("Telco-Customer-Churn.csv")
+
+# Silver table: filter + cast + encode
+df_silver = df_raw \
+    .withColumn("ChurnBinary",
+        F.when(F.col("Churn") == "Yes", 1.0).otherwise(0.0)) \
+    .filter(F.col("Contract") == "Month-to-month") \
+    .filter(F.col("InternetService") != "No") \
+    .na.fill({"TotalCharges": 0.0})
+# Result: 3,351 rows, churn rate 46.4%</code></pre>
+
+<h2>4. Kaplan-Meier Survival Estimation</h2>
+
+<p>
+  The <strong>Kaplan-Meier (KM) estimator</strong> is the standard non-parametric
+  method for estimating survival functions:
+</p>
+
+<p style="text-align:center;font-size:1.1rem;padding:12px;background:var(--bg-sec);border-radius:8px;font-family:monospace">
+  S(t) = &prod;<sub>t<sub>i</sub> &le; t</sub> (1 &minus; d<sub>i</sub> / n<sub>i</sub>)
+</p>
+
+<p>
+  Where <code>d<sub>i</sub></code> is the number of churn events at month t<sub>i</sub>,
+  and <code>n<sub>i</sub></code> is the number of customers still at risk just before t<sub>i</sub>.
+</p>
+
+<h3>Overall KM Results</h3>
+
+<table class="result-table">
+  <thead>
+    <tr><th>Month (t)</th><th>S(t)</th><th>Events (d)</th><th>At Risk (n)</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>1</td><td>0.9039</td><td>322</td><td>3351</td></tr>
+    <tr><td>2</td><td>0.8675</td><td>117</td><td>2906</td></tr>
+    <tr><td>3</td><td>0.8394</td><td>88</td><td>2716</td></tr>
+    <tr><td>6</td><td>0.7803</td><td>39</td><td>2313</td></tr>
+    <tr><td>12</td><td>0.6950</td><td>32</td><td>1815</td></tr>
+    <tr><td>24</td><td>0.5173</td><td>—</td><td>—</td></tr>
+    <tr><td>36</td><td>0.3557</td><td>—</td><td>—</td></tr>
+    <tr><td>48</td><td>0.2438</td><td>—</td><td>—</td></tr>
+    <tr><td>60</td><td>0.1542</td><td>—</td><td>—</td></tr>
+    <tr><td>71</td><td>0.1266</td><td>—</td><td>—</td></tr>
+  </tbody>
+</table>
+
+<p>
+  By month 71, the survival probability drops to just 12.66% — meaning approximately
+  <strong>87% of month-to-month internet customers eventually churn</strong>.
+  The steepest drop occurs in the first month (S(1) falls from 1.0 to 0.90),
+  highlighting a critical early retention window.
+</p>
+
+<h3>Stratified KM: DSL vs Fiber Optic</h3>
+
+<p>
+  Splitting by internet service type reveals a clear pattern:
+  <strong>DSL customers consistently have higher survival probabilities</strong>
+  than Fiber optic customers across all time points.
+  This may reflect price sensitivity (Fiber optic costs more) or
+  different service quality expectations.
+</p>
+
+<div class="callout">
+  <strong>Key Insight</strong>
+  Fiber optic churn risk is notably higher. Telecom companies should
+  consider targeted retention offers for Fiber optic subscribers,
+  especially during the first 6 months when churn is most intense.
+</div>
+
+<h2>5. Cox Proportional Hazards Model</h2>
+
+<p>
+  The <strong>Cox Proportional Hazards (Cox PH)</strong> model is a semi-parametric
+  approach that estimates hazard ratios without assuming a specific baseline distribution:
+</p>
+
+<p style="text-align:center;font-size:1.1rem;padding:12px;background:var(--bg-sec);border-radius:8px;font-family:monospace">
+  h(t | x) = h<sub>0</sub>(t) &middot; exp(x<sup>T</sup>&beta;)
+</p>
+
+<p>
+  A <strong>Hazard Ratio (HR) &lt; 1</strong> means the factor is protective
+  (reduces churn risk); <strong>HR &gt; 1</strong> means it increases risk.
+  We fit the model using <code>lifelines.CoxPHFitter</code>, as recommended
+  by the Databricks Solution Accelerator tutorial.
+</p>
+
+<h3>Cox PH Results</h3>
+
+<table class="result-table">
+  <thead>
+    <tr><th>Covariate</th><th>coef</th><th>exp(coef) = HR</th><th>se(coef)</th><th>95% CI</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Dependents_Yes</td><td style="color:#43a047">&minus;0.33</td><td>0.72</td><td>0.07</td><td>[&minus;0.47, &minus;0.19]</td></tr>
+    <tr><td>InternetService_DSL</td><td style="color:#43a047">&minus;0.22</td><td>0.80</td><td>0.06</td><td>[&minus;0.33, &minus;0.10]</td></tr>
+    <tr><td>OnlineBackup_Yes</td><td style="color:#43a047">&minus;0.78</td><td>0.46</td><td>0.06</td><td>[&minus;0.89, &minus;0.66]</td></tr>
+    <tr><td>TechSupport_Yes</td><td style="color:#43a047">&minus;0.64</td><td>0.53</td><td>0.08</td><td>[&minus;0.79, &minus;0.49]</td></tr>
+  </tbody>
+</table>
+
+<p>
+  All four covariates have <strong>HR &lt; 1</strong>, meaning they are protective factors:
+</p>
+<ul>
+  <li><strong>OnlineBackup (HR=0.46)</strong>: Customers with online backup are 54% less likely to churn — the strongest protector</li>
+  <li><strong>TechSupport (HR=0.53)</strong>: Having tech support reduces churn risk by 47%</li>
+  <li><strong>Dependents (HR=0.72)</strong>: Customers with dependents are 28% less likely to churn</li>
+  <li><strong>DSL Internet (HR=0.80)</strong>: DSL users churn 20% less than Fiber optic users</li>
+</ul>
+
+<p>
+  Concordance Index = <strong>0.64</strong>, indicating the model has moderate
+  discriminative power (significantly better than random at 0.50).
+</p>
+
+<h2>6. AFT Survival Regression (PySpark MLlib)</h2>
+
+<p>
+  The <strong>Accelerated Failure Time (AFT)</strong> model parameterizes
+  the relationship between covariates and survival time:
+</p>
+
+<p style="text-align:center;font-size:1.1rem;padding:12px;background:var(--bg-sec);border-radius:8px;font-family:monospace">
+  log(T) = x<sup>T</sup>&beta; + &sigma;&epsilon;
+  &nbsp;&nbsp;(&epsilon; ~ Weibull)
+</p>
+
+<p>
+  A <strong>positive coefficient</strong> means the variable <em>extends</em> survival time
+  (protective). A <strong>negative coefficient</strong> means it <em>shortens</em> survival
+  time (risk factor).
+</p>
+
+<h3>Feature Engineering Pipeline</h3>
+
+<p>
+  We apply <strong>StringIndexer + OneHotEncoder</strong> to 13 categorical features
+  (InternetService, Contract, PaymentMethod, OnlineSecurity, OnlineBackup,
+  DeviceProtection, TechSupport, StreamingTV, StreamingMovies, gender, Partner,
+  Dependents, PaperlessBilling) and combine them with 3 numeric features
+  (SeniorCitizen, MonthlyCharges, TotalCharges) via VectorAssembler,
+  producing a <strong>43-dimensional feature vector</strong>.
+</p>
+
+<pre><code># PySpark ML Pipeline for feature engineering
+stages = []
+for c in cat_cols:
+    indexer = StringIndexer(inputCol=c, outputCol=c+"_idx", handleInvalid="keep")
+    encoder = OneHotEncoder(inputCol=c+"_idx", outputCol=c+"_vec", handleInvalid="keep")
+    stages += [indexer, encoder]
+
+assembler = VectorAssembler(inputCols=encoded_cols + num_cols, outputCol="features")
+stages.append(assembler)
+
+pipeline = Pipeline(stages=stages)
+model_df = pipeline.fit(df_silver).transform(df_silver)
+
+# Train AFT model
+aft = AFTSurvivalRegression(
+    labelCol="tenure", censorCol="ChurnBinary",
+    featuresCol="features",
+    quantileProbabilities=[0.25, 0.5, 0.75],
+    quantilesCol="quantiles"
+)
+aft_model = aft.fit(train_df)
+# Scale: 0.6180, Intercept: 2.9982, Features: 43</code></pre>
+
+<h3>AFT Top Coefficients</h3>
+
+<table class="result-table">
+  <thead>
+    <tr><th>Feature</th><th>Coefficient</th><th>Direction</th><th>Interpretation</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>StreamingMovies</td><td style="color:#e53935">&minus;0.1711</td><td>Risk</td><td>Streaming subscribers churn faster</td></tr>
+    <tr><td>Contract (Month-to-month)</td><td style="color:#43a047">+0.1711</td><td>Protective</td><td>Monthly contract still extends tenure</td></tr>
+    <tr><td>PaymentMethod (electronic check)</td><td style="color:#e53935">&minus;0.1122</td><td>Risk</td><td>E-check payers churn faster</td></tr>
+    <tr><td>SeniorCitizen</td><td style="color:#43a047">+0.1122</td><td>Protective</td><td>Seniors are more loyal</td></tr>
+    <tr><td>TotalCharges</td><td style="color:#e53935">&minus;0.0411</td><td>Risk</td><td>Higher cumulative spend = faster churn</td></tr>
+    <tr><td>InternetService (Fiber)</td><td style="color:#e53935">&minus;0.0271</td><td>Risk</td><td>Fiber users have shorter survival</td></tr>
+    <tr><td>OnlineSecurity</td><td style="color:#43a047">+0.0271</td><td>Protective</td><td>Security subscribers stay longer</td></tr>
+    <tr><td>TechSupport</td><td style="color:#43a047">+0.0181</td><td>Protective</td><td>Tech support helps retention</td></tr>
+  </tbody>
+</table>
+
+<div class="callout success">
+  <strong>Key Finding</strong>
+  The strongest risk factor is <strong>StreamingMovies subscription</strong>
+  (coefficient &minus;0.1711) — counterintuitively, entertainment add-ons may
+  signal higher price sensitivity rather than loyalty.
+  <strong>Electronic check payment</strong> is also a strong risk signal,
+  consistent with the Cox PH finding that payment friction matters.
+</div>
+
+<h2>7. Model Evaluation</h2>
+
+<h3>AFT Performance on Test Set</h3>
+
+<table class="result-table">
+  <thead>
+    <tr><th>Metric</th><th>Value</th><th>Note</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>RMSE</td><td>237.81</td><td>High due to censoring bias</td></tr>
+    <tr><td>MAE</td><td>69.98</td><td>Mean absolute error in months</td></tr>
+    <tr><td>R&sup2;</td><td>&minus;169.03</td><td>Negative R&sup2; is expected with censored data</td></tr>
+  </tbody>
+</table>
+
+<div class="callout warning">
+  <strong>Note on Evaluation</strong>
+  Standard RMSE/R&sup2; metrics behave poorly with survival data because they cannot
+  account for censoring. When a censored customer has actual tenure=6 but the model
+  predicts 400 months (which may be reasonable!), RMSE explodes.
+  The gold standard metric for survival models is the <strong>C-index
+  (Concordance Index)</strong>, which measures the model's ability to correctly
+  rank customers by their churn risk, unaffected by censoring.
+</div>
+
+<h2>8. Individual Survival Prediction</h2>
+
+<p>
+  The trained AFT model can predict <strong>personalized survival curves</strong>
+  for any customer profile. We compare three risk profiles:
+</p>
+
+<ul>
+  <li>
+    <strong>Low Risk</strong> (feature mean &times; 1.2): high online security,
+    tech support, online backup; DSL internet; credit card payment
+    &rarr; median survival significantly longer
+  </li>
+  <li>
+    <strong>High Risk</strong> (feature mean &times; 0.8): streaming services,
+    electronic check payment; Fiber optic; no ancillary services
+    &rarr; survival probability drops below 50% by ~20 months
+  </li>
+</ul>
+
+<p>
+  This enables the telecom company to <strong>target high-risk customers</strong>
+  with retention incentives before they churn — a concrete business application
+  of survival analysis.
+</p>
+
+<h2>9. Conclusions</h2>
+
+<ol>
+  <li>
+    <strong>Kaplan-Meier curves</strong> reveal that ~87% of month-to-month
+    internet customers eventually churn (S(71)=0.1266). DSL customers
+    consistently out-survive Fiber optic customers.
+  </li>
+  <li>
+    <strong>Cox PH model</strong> identifies four protective factors:
+    OnlineBackup (HR=0.46), TechSupport (HR=0.53), Dependents (HR=0.72),
+    and DSL service (HR=0.80). Concordance Index = 0.64.
+  </li>
+  <li>
+    <strong>AFT regression</strong> reveals StreamingMovies and electronic
+    check payment as the strongest risk factors, while OnlineSecurity,
+    TechSupport, and SeniorCitizen status act as protective factors.
+  </li>
+  <li>
+    Telecom companies should prioritize ancillary service bundling
+    (OnlineBackup + TechSupport) and early engagement for Fiber optic
+    customers paying via electronic check.
+  </li>
+</ol>
+
+<h2>Code Repository</h2>
+<p>Full analysis notebook and MySQL setup scripts are available on GitHub:
+  <a href="https://github.com/lanthonyj" target="_blank">
+    github.com/lanthonyj
+  </a>
+</p>
+
+<hr style="margin:40px 0;border:none;border-top:1px solid var(--border)">
+
+<p style="color:var(--text-sec);font-size:0.9rem">
+  Written for Big Data Software &amp; Applications (Project 1) &bull;
+  April 2026 &bull; Dataset: IBM Telco Customer Churn
+</p>
+
+</article>
+
+<!-- Footer -->
+<footer>
+  <p>&copy; 2026 张航源 &bull; Built with GitHub Pages</p>
+</footer>
+
+</body>
+</html>

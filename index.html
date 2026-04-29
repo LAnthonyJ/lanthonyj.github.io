@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>张航源 | Data Science Portfolio</title>
+    <link rel="stylesheet" href="style.css" />
+    <!-- Replace with your actual domain in the CNAME file -->
+</head>
+<body>
+
+<!-- Navigation -->
+<nav>
+  <div class="nav-inner">
+    <span class="nav-brand">张航源</span>
+    <ul class="nav-links">
+      <li><a href="#about">About</a></li>
+      <li><a href="#projects">Projects</a></li>
+      <li><a href="#blog">Blog</a></li>
+      <li><a href="#skills">Skills</a></li>
+      <li><a href="#contact">Contact</a></li>
+    </ul>
+  </div>
+</nav>
+
+<!-- Hero -->
+<section class="hero" id="about">
+  <div class="hero-avatar">&#128104;&#8205;&#128187;</div>
+  <h1>张航源</h1>
+  <p class="subtitle">Data Science &amp; Big Data Technology</p>
+  <p class="institution">学号：12311701</p>
+  <div class="hero-links">
+    <a class="btn btn-white" href="https://github.com/lanthonyj" target="_blank">
+      &#x1F4BB; GitHub
+    </a>
+    <a class="btn btn-outline" href="#blog">
+      &#x1F4DD; Blog
+    </a>
+    <a class="btn btn-outline" href="mailto:12311701@student.edu.cn">
+      &#x2709; Contact
+    </a>
+  </div>
+</section>
+
+<!-- About -->
+<section>
+  <div class="container">
+    <h2 class="section-title">About Me</h2>
+    <div style="max-width:680px;margin:0 auto;text-align:center;color:var(--text-sec);font-size:1.05rem;line-height:1.9">
+      <p>
+        I am a student majoring in Data Science and Big Data Technology.
+        My interests include distributed computing with Apache Spark, machine learning,
+        clinical data analysis, and building scalable data pipelines.
+      </p>
+      <p style="margin-top:16px">
+        This site showcases my coursework projects, including survival analysis with PySpark
+        and clinical data exploration using OpenClaw.
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- Projects -->
+<section id="projects">
+  <div class="container">
+    <h2 class="section-title">Projects</h2>
+    <div class="cards-grid">
+
+      <div class="card">
+        <div class="card-icon">&#x1F489;</div>
+        <h3>Diabetes Health Indicators Analysis</h3>
+        <p>
+          Analyzed 253,000+ patient records using Apache Spark and OpenClaw.
+          Explored risk factors for diabetes using both Spark SQL and DataFrame APIs.
+          Identified BMI, age, and blood pressure as top predictors.
+        </p>
+        <span class="tag">PySpark · OpenClaw · Clinical Data</span>
+      </div>
+
+      <div class="card">
+        <div class="card-icon">&#x1F4C8;</div>
+        <h3>Survival Analysis — Recidivism Study</h3>
+        <p>
+          Applied Kaplan-Meier estimation and AFT (Accelerated Failure Time)
+          regression on the Rossi recidivism dataset using PySpark MLlib.
+          Identified protective factors against re-arrest.
+        </p>
+        <span class="tag">PySpark MLlib · AFT Regression · KM Estimator</span>
+      </div>
+
+      <div class="card">
+        <div class="card-icon">&#x1F5C4;</div>
+        <h3>LLM-Powered Text-to-SQL Analysis</h3>
+        <p>
+          Built a MySQL database from survival analysis data and evaluated
+          LLM-generated SQL queries. Documented 3 systematic failure patterns
+          in LLM SQL generation.
+        </p>
+        <span class="tag">MySQL · LLM · Text-to-SQL</span>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- Blog -->
+<section id="blog">
+  <div class="container">
+    <h2 class="section-title">Blog</h2>
+    <div class="posts-list">
+
+      <div class="post-card">
+        <div class="post-date">
+          <span>APR</span>
+          <span style="font-size:1.4rem">28</span>
+          <span>2026</span>
+        </div>
+        <div class="post-content">
+          <h3><a href="blog.html">Survival Analysis with PySpark: A Step-by-Step Guide</a></h3>
+          <p>
+            A complete walkthrough of survival analysis on the Rossi recidivism dataset
+            using PySpark MLlib. Covers Kaplan-Meier curves, AFT regression, model interpretation,
+            and individual survival prediction.
+          </p>
+          <div class="post-tags">
+            <span class="tag-item">PySpark</span>
+            <span class="tag-item">Survival Analysis</span>
+            <span class="tag-item">AFT</span>
+            <span class="tag-item">Machine Learning</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="post-card">
+        <div class="post-date">
+          <span>APR</span>
+          <span style="font-size:1.4rem">27</span>
+          <span>2026</span>
+        </div>
+        <div class="post-content">
+          <h3>3 Ways LLMs Fail at SQL: Lessons from Text-to-SQL Experiments</h3>
+          <p>
+            I tested GPT, Qwen, and Doubao on a real MySQL database and found 3 systematic
+            failure patterns: GROUP BY violations, self-referential aggregation, and
+            fabricated JOIN conditions.
+          </p>
+          <div class="post-tags">
+            <span class="tag-item">LLM</span>
+            <span class="tag-item">SQL</span>
+            <span class="tag-item">Text-to-SQL</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- Skills -->
+<section id="skills">
+  <div class="container">
+    <h2 class="section-title">Technical Skills</h2>
+    <div style="max-width:700px;margin:0 auto">
+
+      <div class="skills-group">
+        <h3>Big Data &amp; Distributed Computing</h3>
+        <div class="skills-row">
+          <span class="skill-badge">Apache Spark</span>
+          <span class="skill-badge">PySpark</span>
+          <span class="skill-badge">Spark SQL</span>
+          <span class="skill-badge">Hadoop</span>
+          <span class="skill-badge">Hive</span>
+        </div>
+      </div>
+
+      <div class="skills-group">
+        <h3>Machine Learning &amp; Data Science</h3>
+        <div class="skills-row">
+          <span class="skill-badge">Spark MLlib</span>
+          <span class="skill-badge">Survival Analysis</span>
+          <span class="skill-badge">pandas</span>
+          <span class="skill-badge">scikit-learn</span>
+          <span class="skill-badge">matplotlib</span>
+        </div>
+      </div>
+
+      <div class="skills-group">
+        <h3>Databases &amp; Tools</h3>
+        <div class="skills-row">
+          <span class="skill-badge">MySQL</span>
+          <span class="skill-badge">Python</span>
+          <span class="skill-badge">Jupyter</span>
+          <span class="skill-badge">Docker</span>
+          <span class="skill-badge">Git</span>
+          <span class="skill-badge">OpenClaw / AutoClaw</span>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- Contact -->
+<section id="contact">
+  <div class="container" style="text-align:center">
+    <h2 class="section-title">Contact</h2>
+    <p style="color:var(--text-sec);margin-bottom:24px;font-size:1.05rem">
+      Feel free to reach out for collaboration or questions.
+    </p>
+    <div style="display:flex;gap:16px;justify-content:center;flex-wrap:wrap">
+      <a class="btn btn-white" style="border:2px solid var(--primary);color:var(--primary)"
+         href="mailto:12311701@student.edu.cn">
+        &#x2709; 12311701@student.edu.cn
+      </a>
+      <a class="btn btn-white" style="border:2px solid var(--primary);color:var(--primary)"
+         href="https://github.com/lanthonyj" target="_blank">
+        &#x1F4BB; GitHub Profile
+      </a>
+    </div>
+  </div>
+</section>
+
+<!-- Footer -->
+<footer>
+  <p>
+    &copy; 2026 张航源 &bull;
+    Built with GitHub Pages &bull;
+    Custom domain via <a href="https://www.namecheap.com">Namecheap</a>
+  </p>
+  <p style="margin-top:8px;font-size:0.8rem;opacity:.6">
+    Data Science &amp; Big Data Technology Program
+  </p>
+</footer>
+
+</body>
+</html>
